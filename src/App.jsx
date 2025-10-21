@@ -359,6 +359,24 @@ const handleTouchEnd = (e, dropIndex) => {
   setTouchedItem(null);
   setTouchStartY(null);
 };
+// Move team up or down in rankings
+const moveTeamUp = (index) => {
+  if (index === 0) return; // Already at top
+  const newRankings = [...myRankings];
+  const temp = newRankings[index - 1];
+  newRankings[index - 1] = newRankings[index];
+  newRankings[index] = temp;
+  setMyRankings(newRankings);
+};
+
+const moveTeamDown = (index) => {
+  if (index === myRankings.length - 1) return; // Already at bottom
+  const newRankings = [...myRankings];
+  const temp = newRankings[index + 1];
+  newRankings[index + 1] = newRankings[index];
+  newRankings[index] = temp;
+  setMyRankings(newRankings);
+};
 // userRank already declared above; duplicate removed
 
 // REPLACE the existing fetchLeaderboard function (around line 237) with this improved version:
@@ -1692,18 +1710,30 @@ if (needsUsername) {
                 myRankings.map((team, index) => (
                   <div
                     key={team.id}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, index)}
-                    onDragEnd={handleDragEnd}
-                    onDragOver={handleDragOver}
-                    onDrop={(e) => handleDrop(e, index)}
-                    onTouchStart={(e) => handleTouchStart(e, index)}
-                    onTouchMove={handleTouchMove}
-                    onTouchEnd={(e) => handleTouchEnd(e, index)}
-                    className={`flex items-center gap-4 p-4 ${cardBg} border ${borderColor} rounded-lg cursor-move hover:shadow-lg transition-all duration-200 hover:scale-[1.02] ${
+                    className={`flex items-center gap-2 p-4 ${cardBg} border ${borderColor} rounded-lg transition-all duration-200 ${
                       draggedItem === index ? 'opacity-50' : ''
                     }`}
                   >
+                    {/* Up/Down Arrows for Mobile */}
+                    <div className="flex flex-col gap-1">
+                      <button
+                        onClick={() => moveTeamUp(index)}
+                        disabled={index === 0}
+                        className="p-1 hover:bg-blue-600 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                        title="Move up"
+                      >
+                        <ChevronRight size={20} className="rotate-[-90deg]" />
+                      </button>
+                      <button
+                        onClick={() => moveTeamDown(index)}
+                        disabled={index === myRankings.length - 1}
+                        className="p-1 hover:bg-blue-600 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                        title="Move down"
+                      >
+                        <ChevronRight size={20} className="rotate-90" />
+                      </button>
+                    </div>
+
                     <span className="text-2xl font-bold text-gray-500 w-8">#{index + 1}</span>
                     <span className="text-3xl">{team.logo_emoji}</span>
                     <div className="flex-1">
