@@ -49,6 +49,8 @@ export default function FanIndexApp() {
   const [selectedFavoriteTeam, setSelectedFavoriteTeam] = useState('');
   const [hasVotedThisWeek, setHasVotedThisWeek] = useState(false);
   const [checkingVoteStatus, setCheckingVoteStatus] = useState(false);
+  const [touchStartY, setTouchStartY] = useState(null);
+  const [touchedItem, setTouchedItem] = useState(null);
   // removed duplicate teamStats/controversialTeams declarations to avoid redeclare error
   const [analyticsData, setAnalyticsData] = useState({
     totalVoters: 0,
@@ -328,6 +330,34 @@ const handleDrop = (e, dropIndex) => {
 
 const handleDragEnd = () => {
   setDraggedItem(null);
+};
+// Touch handlers for mobile
+const handleTouchStart = (e, index) => {
+  setTouchedItem(index);
+  setTouchStartY(e.touches[0].clientY);
+};
+
+const handleTouchMove = (e) => {
+  if (touchedItem === null) return;
+  e.preventDefault();
+};
+
+const handleTouchEnd = (e, dropIndex) => {
+  if (touchedItem === null || touchedItem === dropIndex) {
+    setTouchedItem(null);
+    setTouchStartY(null);
+    return;
+  }
+
+  const newRankings = [...myRankings];
+  const draggedTeam = newRankings[touchedItem];
+  
+  newRankings.splice(touchedItem, 1);
+  newRankings.splice(dropIndex, 0, draggedTeam);
+  
+  setMyRankings(newRankings);
+  setTouchedItem(null);
+  setTouchStartY(null);
 };
 // userRank already declared above; duplicate removed
 
@@ -1667,6 +1697,9 @@ if (needsUsername) {
                     onDragEnd={handleDragEnd}
                     onDragOver={handleDragOver}
                     onDrop={(e) => handleDrop(e, index)}
+                    onTouchStart={(e) => handleTouchStart(e, index)}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={(e) => handleTouchEnd(e, index)}
                     className={`flex items-center gap-4 p-4 ${cardBg} border ${borderColor} rounded-lg cursor-move hover:shadow-lg transition-all duration-200 hover:scale-[1.02] ${
                       draggedItem === index ? 'opacity-50' : ''
                     }`}
