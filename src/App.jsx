@@ -1092,15 +1092,58 @@ const submitVote = async () => {
 };
   // Generate roast
   const generateRoast = () => {
-    const roasts = [
-      "Having Kansas at #1? Bold strategy, Cotton. Let's see if it pays off. 🙄",
-      "This ballot screams 'I only watch ESPN highlights' and I respect that. 📺",
-      "Are we ranking basketball teams or your favorite mascots? Can't tell. 🤔",
-      "Your SEC bias is showing harder than a cowbell at a Mississippi State game. 🔔",
-      "Interesting choices. Did you make this ballot while blindfolded? 😏"
-    ];
-    setRoastText(roasts[Math.floor(Math.random() * roasts.length)]);
-  };
+  if (myRankings.length === 0) {
+    setRoastText("Can't roast an empty ballot! Pick some teams first. 🤷");
+    return;
+  }
+
+  const roasts = [];
+  
+  // Check for favorite team bias
+  const favoriteTeam = teams.find(t => t.id === userProfile?.favorite_team_id);
+  if (favoriteTeam && myRankings.find(r => r.id === favoriteTeam.id)) {
+    const favoriteRank = myRankings.findIndex(r => r.id === favoriteTeam.id) + 1;
+    if (favoriteRank <= 5) {
+      roasts.push(`${favoriteTeam.name} at #${favoriteRank}? Homer much? 🏠`);
+    }
+  }
+  
+  // Check for controversial picks
+  const unrankedTeams = myRankings.filter(t => !t.ap_rank || t.ap_rank > 25);
+  if (unrankedTeams.length > 5) {
+    roasts.push(`${unrankedTeams.length} unranked teams? Someone's feeling spicy! 🌶️`);
+  }
+  
+  // Check for blue blood bias
+  const blueBloods = ['Kansas', 'Duke', 'North Carolina', 'Kentucky', 'UCLA'];
+  const blueBloodCount = myRankings.filter(r => 
+    blueBloods.some(bb => r.name.includes(bb))
+  ).length;
+  if (blueBloodCount >= 4) {
+    roasts.push("Did ESPN make this ballot for you? So many blue bloods. 📺");
+  }
+  
+  // Check for conference bias
+  const conferenceCount = {};
+  myRankings.forEach(r => {
+    conferenceCount[r.conference] = (conferenceCount[r.conference] || 0) + 1;
+  });
+  const topConf = Object.entries(conferenceCount).sort((a, b) => b[1] - a[1])[0];
+  if (topConf && topConf[1] >= 6) {
+    roasts.push(`${topConf[1]} ${topConf[0]} teams? Your bias is showing. 🔔`);
+  }
+  
+  // Default roasts if nothing specific
+  if (roasts.length === 0) {
+    roasts.push(
+      "This ballot is... actually pretty reasonable. Boring! 😴",
+      "Interesting choices. Bold strategy, Cotton. 🎯",
+      "Are we ranking basketball teams or your favorite mascots? 🤔"
+    );
+  }
+  
+  setRoastText(roasts[Math.floor(Math.random() * roasts.length)]);
+};
 
   const bgColor = darkMode ? 'bg-gray-900' : 'bg-gray-50';
   const textColor = darkMode ? 'text-white' : 'text-gray-900';
@@ -1239,6 +1282,13 @@ if (needsUsername) {
 
           <div>
             <label className="block text-sm font-medium mb-2">Favorite Team (Optional)</label>
+            <input
+              type="text"
+              placeholder="Search for your team..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className={`w-full px-4 py-2 ${cardBg} border ${borderColor} rounded-lg mb-2`}
+            />
             <select
               value={selectedFavoriteTeam}
               onChange={(e) => setSelectedFavoriteTeam(e.target.value)}
@@ -1246,6 +1296,7 @@ if (needsUsername) {
             >
               <option value="">-- Select Your Team --</option>
               {teams
+                .filter(team => searchQuery === '' || team.name.toLowerCase().includes(searchQuery.toLowerCase()))
                 .sort((a, b) => a.name.localeCompare(b.name))
                 .map(team => (
                   <option key={team.id} value={team.id}>
