@@ -828,13 +828,24 @@ const fetchDebateTopics = async () => {
       .from('debate_topics')
       .select(`
         *,
-        debate_comments(count)
+        debate_comments(count),
+        upvotes:debate_topic_votes(count).eq(vote_type, 'up'),
+        downvotes:debate_topic_votes(count).eq(vote_type, 'down')
       `)
       .eq('is_active', true)
       .order('created_at', { ascending: false });
     
     if (error) throw error;
-    setDebateTopics(data || []);
+    
+    // Process the counts
+    const processedTopics = data.map(topic => ({
+      ...topic,
+      upvotes: topic.upvotes?.[0]?.count || 0,
+      downvotes: topic.downvotes?.[0]?.count || 0,
+      commentCount: topic.debate_comments?.[0]?.count || 0
+    }));
+    
+    setDebateTopics(processedTopics);
   } catch (error) {
     console.error('Error fetching debates:', error);
   }
@@ -858,21 +869,47 @@ const fetchDebateComments = async (topicId) => {
 };
 
 // Vote on a topic
+// Vote on a topic
 const voteOnTopic = async (topicId, voteType) => {
   try {
-    // Insert or update vote
-    const { error } = await supabase
+    // Check if user already voted
+    const { data: existingVote } = await supabase
       .from('debate_topic_votes')
-      .upsert({
-        topic_id: topicId,
-        user_id: user.id,
-        vote_type: voteType
-      });
+      .select('*')
+      .eq('topic_id', topicId)
+      .eq('user_id', user.id)
+      .single();
+
+    if (existingVote) {
+      // Update existing vote
+      if (existingVote.vote_type === voteType) {
+        // Remove vote if clicking same button
+        await supabase
+          .from('debate_topic_votes')
+          .delete()
+          .eq('topic_id', topicId)
+          .eq('user_id', user.id);
+      } else {
+        // Change vote
+        await supabase
+          .from('debate_topic_votes')
+          .update({ vote_type: voteType })
+          .eq('topic_id', topicId)
+          .eq('user_id', user.id);
+      }
+    } else {
+      // Insert new vote
+      await supabase
+        .from('debate_topic_votes')
+        .insert({
+          topic_id: topicId,
+          user_id: user.id,
+          vote_type: voteType
+        });
+    }
     
-    if (error) throw error;
-    
-    // Refresh topics
-    fetchDebateTopics();
+    // Refresh topics to show updated counts
+    await fetchDebateTopics();
   } catch (error) {
     console.error('Error voting:', error);
   }
@@ -1957,7 +1994,6 @@ if (needsUsername) {
           )}
 
           {/* DEBATE VIEW */}
-          {/* DEBATE VIEW */}
 {currentView === 'debate' && (
   <div className="space-y-6">
     <h2 className="text-3xl font-bold">Debate Zone - Defend Your Ballot</h2>
@@ -1968,7 +2004,7 @@ if (needsUsername) {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-bold">{topic.title}</h3>
             <span className="text-sm text-gray-500">
-              {topic.debate_comments?.[0]?.count || 0} comments
+              {topic.commentCount} comments
             </span>
           </div>
           <p className="text-gray-400 mb-4">{topic.description}</p>
@@ -1992,65 +2028,71 @@ if (needsUsername) {
                 setSelectedTopic(topic);
                 fetchDebateComments(topic.id);
               }}
-              className="flex items-center gap-2 px-4 py-2 hover:bg-gray-700 rounded"
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded ml-auto"
             >
               <MessageSquare size={16} />
-              <span>View Discussion</span>
+              <span>Join Discussion</span>
             </button>
           </div>
         </div>
       ))}
     </div>
 
-    {/* Comment Modal/Section */}
+    {/* Comment Modal - Full Screen Overlay */}
     {selectedTopic && (
-      <div className={`${cardBg} p-6 rounded-lg border ${borderColor} mt-6`}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-2xl font-bold">{selectedTopic.title}</h3>
-          <button 
-            onClick={() => setSelectedTopic(null)}
-            className="text-gray-500 hover:text-white"
-          >
-            <X size={24} />
-          </button>
-        </div>
-        
-        {/* Post Comment */}
-        <div className="mb-6">
-          <textarea
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-            placeholder="Share your thoughts..."
-            className={`w-full px-4 py-3 ${cardBg} border ${borderColor} rounded-lg min-h-[100px]`}
-          />
-          <button
-            onClick={() => postComment(selectedTopic.id)}
-            disabled={!newComment.trim()}
-            className="mt-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-bold disabled:opacity-50"
-          >
-            Post Comment
-          </button>
-        </div>
+      <div className="fixed inset-0 bg-black bg-opacity-80 z-50 flex items-center justify-center p-4">
+        <div className={`${cardBg} rounded-lg border ${borderColor} w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col`}>
+          {/* Header */}
+          <div className="flex items-center justify-between p-6 border-b border-gray-700">
+            <div className="flex-1">
+              <h3 className="text-2xl font-bold">{selectedTopic.title}</h3>
+              <p className="text-gray-400 mt-2">{selectedTopic.description}</p>
+            </div>
+            <button 
+              onClick={() => setSelectedTopic(null)}
+              className="text-gray-500 hover:text-white ml-4"
+            >
+              <X size={32} />
+            </button>
+          </div>
+          
+          {/* Post Comment */}
+          <div className="p-6 border-b border-gray-700">
+            <textarea
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              placeholder="Share your thoughts..."
+              className={`w-full px-4 py-3 ${cardBg} border ${borderColor} rounded-lg min-h-[100px]`}
+            />
+            <button
+              onClick={() => postComment(selectedTopic.id)}
+              disabled={!newComment.trim()}
+              className="mt-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-bold disabled:opacity-50"
+            >
+              Post Comment
+            </button>
+          </div>
 
-        {/* Comments List */}
-        <div className="space-y-4">
-          {debateComments.length === 0 ? (
-            <p className="text-center text-gray-500 py-8">
-              No comments yet. Be the first to share your opinion!
-            </p>
-          ) : (
-            debateComments.map((comment) => (
-              <div key={comment.id} className="p-4 bg-gray-700 rounded-lg">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="font-bold">{comment.users?.username || 'Anonymous'}</span>
-                  <span className="text-xs text-gray-500">
-                    {new Date(comment.created_at).toLocaleDateString()}
-                  </span>
+          {/* Comments List - Scrollable */}
+          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            {debateComments.length === 0 ? (
+              <p className="text-center text-gray-500 py-8">
+                No comments yet. Be the first to share your opinion!
+              </p>
+            ) : (
+              debateComments.map((comment) => (
+                <div key={comment.id} className="p-4 bg-gray-700 rounded-lg">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="font-bold">{comment.users?.username || 'Anonymous'}</span>
+                    <span className="text-xs text-gray-500">
+                      {new Date(comment.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <p className="text-gray-300">{comment.comment_text}</p>
                 </div>
-                <p className="text-gray-300">{comment.comment_text}</p>
-              </div>
-            ))
-          )}
+              ))
+            )}
+          </div>
         </div>
       </div>
     )}
